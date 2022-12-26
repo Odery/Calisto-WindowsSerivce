@@ -103,14 +103,15 @@ namespace calisto
 				// Get the current system status
 				var systemStatus = GetSystemStatus();
 
-				// Serialize the system status object to a JSON string
-				var json = JsonConvert.SerializeObject(systemStatus);
+				// Serialize the system status object to a JSON string using Newtonsoft.Json
+				var json = Newtonsoft.Json.JsonConvert.SerializeObject(systemStatus);
 
 				// Send the JSON string back to the server
 				await client.UploadStringTaskAsync(primaryApiUrl, "POST", json);
 				return true;
 			}
 
+			// If the response is not "shutdown" or "data", return false
 			return false;
 		}
 
