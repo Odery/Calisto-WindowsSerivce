@@ -3,14 +3,14 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
-using System.Net;
 using System.ServiceProcess;
 using System.Timers;
 using log4net;
-using Newtonsoft.Json;
 using System.Windows.Forms;
 using System.IO;
 using System.Threading.Tasks;
+using System.Net.Http;
+using System.Text;
 
 namespace calisto
 {
@@ -21,9 +21,6 @@ namespace calisto
 
         // Timer to make the HTTP request to the API
         private System.Timers.Timer timer;
-
-        // URL of the API
-        private string apiUrl = "https://myapi.com/status";
 
         // Logger instance
         private static readonly ILog log = LogManager.GetLogger(typeof(Service1));
@@ -51,38 +48,55 @@ namespace calisto
             timer.Stop();
         }
 
-		private async Task<(string, WebClient)> MakeApiRequestAsync(string apiUrl, int retries)
+		private async Task<(string, HttpClient)> MakeApiRequestAsync(string apiUrl, int retries)
 		{
 			// Set a flag to indicate whether the request was successful
 			bool success = false;
 
 			// Initialize the client variable
-			WebClient client = null;
+			HttpClient client = null;
 
 			// Loop until the request is successful or the maximum number of retries is reached
 			while (!success && retries > 0)
 			{
 				try
 				{
-					// Create a new WebClient instance
-					client = new WebClient();
+					// Create a new HttpClient instance
+					client = new HttpClient();
 
 					// Call the API and get the response
-					string response = await client.DownloadStringTaskAsync(apiUrl);
+					HttpResponseMessage response = await client.GetAsync(apiUrl);
+					string responseString = await response.Content.ReadAsStringAsync();
 
 					// Set the success flag to true
 					success = true;
 
 					// Return the response and client
-					return (response, client);
+					return (responseString, client);
 				}
-				catch (WebException ex)
+				catch (HttpRequestException ex)
 				{
-					// Log the exception message and status code
-					log.Error($"An error occurred while making the HTTP request to the API: {ex.Message} (Status code: {ex.Status})");
+					// Log the exception message
+					log.Error($"An error occurred while making the HTTP request to the API: {ex.Message}");
 
 					// Decrement the number of retries
 					retries--;
+				}
+				catch (Exception ex)
+				{
+					// Log the exception message
+					log.Error($"An unexpected error occurred while making the HTTP request to the API: {ex.Message}");
+
+					// Set the success flag to false
+					success = false;
+				}
+				finally
+				{
+					// Dispose of the HttpClient instance if it was created
+					if (client != null)
+					{
+						client.Dispose();
+					}
 				}
 			}
 
@@ -90,29 +104,36 @@ namespace calisto
 			return ("", null);
 		}
 
-		private async Task<bool> HandleApiResponseAsync(WebClient client, string primaryApiUrl, string response)
+		private async Task<bool> HandleApiResponseAsync(HttpClient client, string primaryApiUrl, string response)
 		{
-			// Check the response
-			if (response.Trim().ToLower() == "shutdown")
-			{
-				ShutDown();
-				return true;
-			}
-			else if (response.Trim().ToLower() == "data")
-			{
-				// Get the current system status
-				var systemStatus = GetSystemStatus();
+            // Check the response
 
-				// Serialize the system status object to a JSON string using Newtonsoft.Json
-				var json = Newtonsoft.Json.JsonConvert.SerializeObject(systemStatus);
+            //If the respoinse is shutdown to shutdown the host
+            if (response.Trim().ToLower() == "shutdown")
+            {
+                ShutDown();
+                return true;
+            }
+            // if the response is data return JSON with data about host
+            else if (response.Trim().ToLower() == "data")
+            {
+                // Get the current system status
+                var systemStatus = GetSystemStatus();
 
-				// Send the JSON string back to the server
-				await client.UploadStringTaskAsync(primaryApiUrl, "POST", json);
-				return true;
-			}
+                // Serialize the system status object to a JSON string using Newtonsoft.Json
+                var json = Newtonsoft.Json.JsonConvert.SerializeObject(systemStatus);
 
-			// If the response is not "shutdown" or "data", return false
-			return false;
+                // Send the JSON string back to the server
+                HttpContent content = new StringContent(json, Encoding.UTF8, "application/json");
+                await client.PostAsync(primaryApiUrl, content);
+                return true;
+            }
+
+            // If the response is something else, return false
+            else
+            {
+                return false;
+            }
 		}
 
 		private async void OnTimer(object sender, ElapsedEventArgs e)
@@ -121,11 +142,11 @@ namespace calisto
 			int retries = 3;
 
 			// Set the primary and fallback API URLs
-			string primaryApiUrl = "https://myapi.com/status";
-			string fallbackApiUrl = "https://fallbackapi.com/status";
+			string primaryApiUrl = ConfigurationManager.AppSettings["PrimaryApiUrl"];
+			string fallbackApiUrl = ConfigurationManager.AppSettings["FallbackApiUrl"];
 
 			// Make the HTTP request to the primary API
-			(string response, WebClient client) = await MakeApiRequestAsync(primaryApiUrl, retries);
+			(string response, HttpClient client) = await MakeApiRequestAsync(primaryApiUrl, retries);
 
 			// If the response is empty, try the fallback API
 			if (string.IsNullOrEmpty(response))
@@ -148,7 +169,8 @@ namespace calisto
 			else
 			{
 				// Log a warning if the request to both the primary and fallback APIs failed
-				log.Warn("Failed to make the HTTP request to the API");
+				log.Warn("Failed to make the HTTP request to the API, locking host!");
+                LockScreen();
 			}
 		}
 
