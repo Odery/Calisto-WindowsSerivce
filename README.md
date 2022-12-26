@@ -1,6 +1,9 @@
 # Calisto service
 [![Build and test](https://github.com/Odery/Calisto-WindowsSerivce/actions/workflows/dotnet-desktop.yml/badge.svg)](https://github.com/Odery/Calisto-WindowsSerivce/actions/workflows/dotnet-desktop.yml)
 [![License](https://img.shields.io/github/license/Odery/Calisto-WindowsSerivce.svg)](https://github.com/Odery/Calisto-WindowsSerivce/blob/master/LICENSE)
+[![.NET Framework](https://img.shields.io/badge/.NET%20Framework-4.6%20or%20later-brightgreen)](https://dotnet.microsoft.com/download/dotnet-framework)
+[![log4net](https://img.shields.io/badge/log4net-2.0.8%20or%20later-brightgreen)](https://www.nuget.org/packages/log4net/)
+[![System.Net.Http](https://img.shields.io/badge/System.Net.Http-4.3.4%20or%20later-brightgreen)](https://www.nuget.org/packages/System.Net.Http/)
 
 Calisto is a Windows service that makes periodic HTTP requests to an API and takes actions based on the API's response. The service is implemented in C# using the .NET Framework and runs on a Windows host.
 
