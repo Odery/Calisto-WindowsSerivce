@@ -122,47 +122,42 @@ namespace calisto
 			string primaryApiUrl = "https://myapi.com/status";
 			string fallbackApiUrl = "https://fallbackapi.com/status";
 
-			// Make the request to the primary API and get the response
-			WebClient client = null;
-			var response = MakeApiRequest(primaryApiUrl, retries, out client);
+			// Make the HTTP request to the primary API
+			WebClient client;
+			string response = MakeApiRequest(primaryApiUrl, retries, out client);
 
-			// Handle the response
-			var success = HandleApiResponse(client, primaryApiUrl, response);
-
-			// If the request was not successful
-			if (!success)
+			// If the response is not empty, process it
+			if (!string.IsNullOrEmpty(response))
 			{
-				// Get the HTTP status code of the response
-				var request = WebRequest.Create(primaryApiUrl);
-				var httpResponse = (HttpWebResponse)request.GetResponse();
-				var statusCode = (int)httpResponse.StatusCode;
-
-				// Log the API URL, HTTP status code, and response content
-				log.Info($"API URL: {primaryApiUrl}");
-				log.Info($"HTTP status code: {statusCode}");
-				log.Info($"Response content: {response}");
-
-				// Try the fallback API
+				if (!HandleApiResponse(client, primaryApiUrl, response))
+				{
+					// If the response is not "shutdown" or "data", log a warning
+					log.Warn($"Unexpected response from the API: {response}");
+				}
+			}
+			else
+			{
+				// If the primary API is not responding, try the fallback API
 				response = MakeApiRequest(fallbackApiUrl, retries, out client);
 
-				// Handle the response
-				success = HandleApiResponse(client, fallbackApiUrl, response);
-
-				// If the fallback API request was successful
-				if (success)
+				// If the fallback API is not responding, lock the screen
+				if (string.IsNullOrEmpty(response))
 				{
-					// Get the HTTP status code of the response
-					request = WebRequest.Create(fallbackApiUrl);
-					httpResponse = (HttpWebResponse)request.GetResponse();
-					statusCode = (int)httpResponse.StatusCode;
-
-					// Log the API URL, HTTP status code, and response content
-					log.Info($"API URL: {fallbackApiUrl}");
-					log.Info($"HTTP status code: {statusCode}");
-					log.Info($"Response content: {response}");
-                }
+					log.Warn("Both the primary and fallback APIs are not responding. Locking the screen.");
+					LockScreen();
+				}
+				else
+				{
+					// If the fallback API is responding, process the response
+					if (!HandleApiResponse(client, fallbackApiUrl, response))
+					{
+						// If the response is not "shutdown" or "data", log a warning
+						log.Warn($"Unexpected response from the API: {response}");
+					}
+				}
 			}
 		}
+
 
 		private SystemStatus GetSystemStatus()
         {
@@ -320,8 +315,18 @@ namespace calisto
             System.Diagnostics.Process.Start("shutdown.exe", "/s /t 0");
         }
 
-        // Inner class to represent the system status
-        public class SystemStatus
+		private void LockScreen()
+		{
+			// Get the current user and the interactive session id
+			var currentUser = System.Security.Principal.WindowsIdentity.GetCurrent().Name;
+			var currentSessionId = Process.GetCurrentProcess().SessionId;
+
+			// Lock the screen
+			Process.Start("rundll32.exe", $"user32.dll,LockWorkStation");
+		}
+
+		// Inner class to represent the system status
+		public class SystemStatus
         {
             public double CpuLoad { get; set; }
             public double MemoryUsage { get; set; }
