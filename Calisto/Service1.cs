@@ -16,7 +16,7 @@ namespace calisto
     public partial class Service1 : ServiceBase
     {
         // Constant variables
-        private const int TimerInterval = 60000; // 60 seconds
+        private const int TimerInterval = 1000; // 1 second
 
         // Timer to make the HTTP request to the API
         private System.Timers.Timer timer;
@@ -49,52 +49,122 @@ namespace calisto
             // Stop the timer
             timer.Stop();
         }
-        private void OnTimer(object sender, ElapsedEventArgs e)
-        {
-            WebClient client = null;
-            try
-            {
-                // Call the API
-                string response;
-                client = new WebClient();
-                response = client.DownloadString(apiUrl);
 
-                // Check the response
-                if (response.Trim().ToLower() == "shutdown")
-                {
-                    ShutDown();
-                }
-                else if (response.Trim().ToLower() == "data")
-                {
-                    // Get the current system status
-                    var systemStatus = GetSystemStatus();
+		private string MakeApiRequest(string apiUrl, int retries, out WebClient client)
+		{
+			// Set a flag to indicate whether the request was successful
+			bool success = false;
 
-                    // Serialize the system status object to a JSON string
-                    var json = JsonConvert.SerializeObject(systemStatus);
+			// Initialize the client variable
+			client = null;
 
-                    // Send the JSON string back to the server
-                    client.UploadString(apiUrl, "POST", json);
+			// Loop until the request is successful or the maximum number of retries is reached
+			while (!success && retries > 0)
+			{
+				try
+				{
+					// Create a new WebClient instance
+					client = new WebClient();
+
+					// Call the API and get the response
+					string response = client.DownloadString(apiUrl);
+
+					// Set the success flag to true
+					success = true;
+
+					// Return the response
+					return response;
+				}
+				catch (WebException ex)
+				{
+					// Log the exception message and status code
+					log.Error($"An error occurred while making the HTTP request to the API: {ex.Message} (Status code: {ex.Status})");
+
+					// Decrement the number of retries
+					retries--;
+				}
+			}
+
+			// If the request was not successful after the maximum number of retries, return an empty string
+			return "";
+		}
+
+		private bool HandleApiResponse(WebClient client, string primaryApiUrl, string response)
+		{
+			// Check the response
+			if (response.Trim().ToLower() == "shutdown")
+			{
+				ShutDown();
+				return true;
+			}
+			else if (response.Trim().ToLower() == "data")
+			{
+				// Get the current system status
+				var systemStatus = GetSystemStatus();
+
+				// Serialize the system status object to a JSON string
+				var json = JsonConvert.SerializeObject(systemStatus);
+
+				// Send the JSON string back to the server
+				client.UploadString(primaryApiUrl, "POST", json);
+				return true;
+			}
+
+			return false;
+		}
+
+		private void OnTimer(object sender, ElapsedEventArgs e)
+		{
+			// Set the number of retries
+			int retries = 3;
+
+			// Set the primary and fallback API URLs
+			string primaryApiUrl = "https://myapi.com/status";
+			string fallbackApiUrl = "https://fallbackapi.com/status";
+
+			// Make the request to the primary API and get the response
+			WebClient client = null;
+			var response = MakeApiRequest(primaryApiUrl, retries, out client);
+
+			// Handle the response
+			var success = HandleApiResponse(client, primaryApiUrl, response);
+
+			// If the request was not successful
+			if (!success)
+			{
+				// Get the HTTP status code of the response
+				var request = WebRequest.Create(primaryApiUrl);
+				var httpResponse = (HttpWebResponse)request.GetResponse();
+				var statusCode = (int)httpResponse.StatusCode;
+
+				// Log the API URL, HTTP status code, and response content
+				log.Info($"API URL: {primaryApiUrl}");
+				log.Info($"HTTP status code: {statusCode}");
+				log.Info($"Response content: {response}");
+
+				// Try the fallback API
+				response = MakeApiRequest(fallbackApiUrl, retries, out client);
+
+				// Handle the response
+				success = HandleApiResponse(client, fallbackApiUrl, response);
+
+				// If the fallback API request was successful
+				if (success)
+				{
+					// Get the HTTP status code of the response
+					request = WebRequest.Create(fallbackApiUrl);
+					httpResponse = (HttpWebResponse)request.GetResponse();
+					statusCode = (int)httpResponse.StatusCode;
+
+					// Log the API URL, HTTP status code, and response content
+					log.Info($"API URL: {fallbackApiUrl}");
+					log.Info($"HTTP status code: {statusCode}");
+					log.Info($"Response content: {response}");
                 }
-            }
-            catch (WebException ex)
-            {
-                // Log the exception message and status code
-                log.Error($"An error occurred while making the HTTP request: {ex.Message} (Status code: {ex.Status})");
-            }
-            catch (Exception ex)
-            {
-                // Log the exception and inner exception messages
-                log.Error($"An error occurred: {ex.Message}", ex);
-            }
-            finally
-            {
-                if (client != null)
-                {
-                    client.Dispose();
-                }
-            }
-        }
-        private SystemStatus GetSystemStatus()
+			}
+		}
+
+		private SystemStatus GetSystemStatus()
         {
             // Check if the system status cache is still valid
             if (systemStatusCache != null && (DateTime.Now - systemStatusCache.Time).TotalMilliseconds < TimerInterval)
@@ -158,10 +228,10 @@ namespace calisto
             try
             {
                 // Get the current physical memory usage
-                long totalMemory = new Microsoft.VisualBasic.Devices.ComputerInfo().TotalPhysicalMemory;
+                ulong totalMemory = new Microsoft.VisualBasic.Devices.ComputerInfo().TotalPhysicalMemory;
 
                 // Get the current available physical memory
-                long availableMemory = new Microsoft.VisualBasic.Devices.ComputerInfo().AvailablePhysicalMemory;
+                ulong availableMemory = new Microsoft.VisualBasic.Devices.ComputerInfo().AvailablePhysicalMemory;
 
                 // Calculate the memory usage
                 double memoryUsage = (totalMemory - availableMemory) / (double)totalMemory;
