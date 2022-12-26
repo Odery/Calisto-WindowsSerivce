@@ -10,6 +10,7 @@ using log4net;
 using Newtonsoft.Json;
 using System.Windows.Forms;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace calisto
 {
@@ -50,13 +51,13 @@ namespace calisto
             timer.Stop();
         }
 
-		private string MakeApiRequest(string apiUrl, int retries, out WebClient client)
+		private async Task<(string, WebClient)> MakeApiRequestAsync(string apiUrl, int retries)
 		{
 			// Set a flag to indicate whether the request was successful
 			bool success = false;
 
 			// Initialize the client variable
-			client = null;
+			WebClient client = null;
 
 			// Loop until the request is successful or the maximum number of retries is reached
 			while (!success && retries > 0)
@@ -67,13 +68,13 @@ namespace calisto
 					client = new WebClient();
 
 					// Call the API and get the response
-					string response = client.DownloadString(apiUrl);
+					string response = await client.DownloadStringTaskAsync(apiUrl);
 
 					// Set the success flag to true
 					success = true;
 
-					// Return the response
-					return response;
+					// Return the response and client
+					return (response, client);
 				}
 				catch (WebException ex)
 				{
@@ -85,11 +86,11 @@ namespace calisto
 				}
 			}
 
-			// If the request was not successful after the maximum number of retries, return an empty string
-			return "";
+			// If the request was not successful after the maximum number of retries, return an empty string and null client
+			return ("", null);
 		}
 
-		private bool HandleApiResponse(WebClient client, string primaryApiUrl, string response)
+		private async Task<bool> HandleApiResponseAsync(WebClient client, string primaryApiUrl, string response)
 		{
 			// Check the response
 			if (response.Trim().ToLower() == "shutdown")
@@ -106,14 +107,14 @@ namespace calisto
 				var json = JsonConvert.SerializeObject(systemStatus);
 
 				// Send the JSON string back to the server
-				client.UploadString(primaryApiUrl, "POST", json);
+				await client.UploadStringTaskAsync(primaryApiUrl, "POST", json);
 				return true;
 			}
 
 			return false;
 		}
 
-		private void OnTimer(object sender, ElapsedEventArgs e)
+		private async void OnTimer(object sender, ElapsedEventArgs e)
 		{
 			// Set the number of retries
 			int retries = 3;
@@ -123,38 +124,30 @@ namespace calisto
 			string fallbackApiUrl = "https://fallbackapi.com/status";
 
 			// Make the HTTP request to the primary API
-			WebClient client;
-			string response = MakeApiRequest(primaryApiUrl, retries, out client);
+			(string response, WebClient client) = await MakeApiRequestAsync(primaryApiUrl, retries);
 
-			// If the response is not empty, process it
+			// If the response is empty, try the fallback API
+			if (string.IsNullOrEmpty(response))
+			{
+				(response, client) = await MakeApiRequestAsync(fallbackApiUrl, retries);
+			}
+
+			// If the response is not empty, handle the response
 			if (!string.IsNullOrEmpty(response))
 			{
-				if (!HandleApiResponse(client, primaryApiUrl, response))
+				// Handle the API response
+				bool handled = await HandleApiResponseAsync(client, primaryApiUrl, response);
+
+				// If the response was not handled, log a warning
+				if (!handled)
 				{
-					// If the response is not "shutdown" or "data", log a warning
-					log.Warn($"Unexpected response from the API: {response}");
+					log.Warn($"Received an unexpected response from the API: {response}");
 				}
 			}
 			else
 			{
-				// If the primary API is not responding, try the fallback API
-				response = MakeApiRequest(fallbackApiUrl, retries, out client);
-
-				// If the fallback API is not responding, lock the screen
-				if (string.IsNullOrEmpty(response))
-				{
-					log.Warn("Both the primary and fallback APIs are not responding. Locking the screen.");
-					LockScreen();
-				}
-				else
-				{
-					// If the fallback API is responding, process the response
-					if (!HandleApiResponse(client, fallbackApiUrl, response))
-					{
-						// If the response is not "shutdown" or "data", log a warning
-						log.Warn($"Unexpected response from the API: {response}");
-					}
-				}
+				// Log a warning if the request to both the primary and fallback APIs failed
+				log.Warn("Failed to make the HTTP request to the API");
 			}
 		}
 
