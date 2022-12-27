@@ -1,5 +1,6 @@
 # Calisto service
 [![Build and test](https://github.com/Odery/Calisto-WindowsSerivce/actions/workflows/dotnet-desktop.yml/badge.svg)](https://github.com/Odery/Calisto-WindowsSerivce/actions/workflows/dotnet-desktop.yml)
+[![GitHub version](https://img.shields.io/github/v/tag/Odery/Calisto-WindowsService)](https://github.com/Odery/Calisto-WindowsService/releases)
 [![License](https://img.shields.io/github/license/Odery/Calisto-WindowsSerivce.svg)](https://github.com/Odery/Calisto-WindowsSerivce/blob/master/LICENSE)
 [![.NET Framework](https://img.shields.io/badge/.NET%20Framework-4.6%20or%20later-brightgreen)](https://dotnet.microsoft.com/download/dotnet-framework)
 [![log4net](https://img.shields.io/badge/log4net-2.0.8%20or%20later-brightgreen)](https://www.nuget.org/packages/log4net/)
