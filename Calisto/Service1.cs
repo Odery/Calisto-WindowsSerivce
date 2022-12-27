@@ -11,16 +11,17 @@ using System.IO;
 using System.Threading.Tasks;
 using System.Net.Http;
 using System.Text;
+using System.Configuration;
 
 namespace calisto
 {
     public partial class Service1 : ServiceBase
     {
-        // Constant variables
-        private const int TimerInterval = 1000; // 1 second
+		// Constant variables
+		int timerInterval = int.Parse(ConfigurationManager.AppSettings["TimerInterval"]);
 
-        // Timer to make the HTTP request to the API
-        private System.Timers.Timer timer;
+		// Timer to make the HTTP request to the API
+		private System.Timers.Timer timer;
 
         // Logger instance
         private static readonly ILog log = LogManager.GetLogger(typeof(Service1));
@@ -35,10 +36,10 @@ namespace calisto
 
         protected override void OnStart(string[] args)
         {
-            // Initialize the timer
-            timer = new System.Timers.Timer();
-            timer.Interval = TimerInterval;
-            timer.Elapsed += new ElapsedEventHandler(OnTimer);
+			// Initialize the timer
+			timer = new System.Timers.Timer();
+			timer.Interval = timerInterval;
+			timer.Elapsed += new ElapsedEventHandler(OnTimer);
             timer.Start();
         }
 
@@ -139,19 +140,19 @@ namespace calisto
 		private async void OnTimer(object sender, ElapsedEventArgs e)
 		{
 			// Set the number of retries
-			int retries = 3;
+			int maxRetries = int.Parse(ConfigurationManager.AppSettings["MaxRetries"]);
 
 			// Set the primary and fallback API URLs
 			string primaryApiUrl = ConfigurationManager.AppSettings["PrimaryApiUrl"];
 			string fallbackApiUrl = ConfigurationManager.AppSettings["FallbackApiUrl"];
 
 			// Make the HTTP request to the primary API
-			(string response, HttpClient client) = await MakeApiRequestAsync(primaryApiUrl, retries);
+			(string response, HttpClient client) = await MakeApiRequestAsync(primaryApiUrl, maxRetries);
 
 			// If the response is empty, try the fallback API
 			if (string.IsNullOrEmpty(response))
 			{
-				(response, client) = await MakeApiRequestAsync(fallbackApiUrl, retries);
+				(response, client) = await MakeApiRequestAsync(fallbackApiUrl, maxRetries);
 			}
 
 			// If the response is not empty, handle the response
@@ -170,7 +171,9 @@ namespace calisto
 			{
 				// Log a warning if the request to both the primary and fallback APIs failed
 				log.Warn("Failed to make the HTTP request to the API, locking host!");
-                LockScreen();
+
+				//Lock the screen if API call was unsuccessful to either endpoint
+				LockScreen();
 			}
 		}
 
@@ -178,7 +181,7 @@ namespace calisto
 		private SystemStatus GetSystemStatus()
         {
             // Check if the system status cache is still valid
-            if (systemStatusCache != null && (DateTime.Now - systemStatusCache.Time).TotalMilliseconds < TimerInterval)
+            if (systemStatusCache != null && (DateTime.Now - systemStatusCache.Time).TotalMilliseconds < timerInterval)
             {
                 // Return the cached system status
                 return systemStatusCache;
