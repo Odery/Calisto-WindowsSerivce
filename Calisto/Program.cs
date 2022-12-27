@@ -17,7 +17,7 @@ namespace Calisto
 			ServiceBase[] ServicesToRun;
 			ServicesToRun = new ServiceBase[]
 			{
-				new Service1()
+				new calisto.calisto()
 			};
 			ServiceBase.Run(ServicesToRun);
 		}

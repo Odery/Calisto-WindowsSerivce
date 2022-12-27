@@ -15,6 +15,7 @@ using System.Configuration;
 using System.Net;
 using System.Net.Sockets;
 using System.Management;
+using System.Linq;
 
 namespace calisto
 {
@@ -39,18 +40,25 @@ namespace calisto
 
         protected override void OnStart(string[] args)
         {
+			// Load log4net configuration
+			log4net.Config.XmlConfigurator.Configure();
 			// Initialize the timer
 			timer = new System.Timers.Timer();
 			timer.Interval = timerInterval;
 			timer.Elapsed += new ElapsedEventHandler(OnTimer);
             timer.Start();
-        }
+			//Log that service has started
+			log.Info("Calisto Windows Service started");
+		}
 
         protected override void OnStop()
         {
             // Stop the timer
             timer.Stop();
-        }
+
+			//Shutdown the log4net
+			LogManager.Shutdown();
+		}
 
 		private async Task<(string, HttpClient)> MakeApiRequestAsync(string apiUrl, int retries)
 		{
@@ -600,6 +608,62 @@ namespace calisto
 				log.Error("Error getting disk usage: " + ex.Message);
 				return new List<DiskUsage>();
 			}
+		}
+
+		public static string[] GetOpenedUrlsInChrome()
+		{
+			// Create a hash set to store the URLs
+			// By using a hash set, we can eliminate the need to check
+			// if a URL has already been added to the list, since
+			// a hash set does not allow duplicate values. This means
+			// that we can remove the if statement inside the foreach loop,
+			// which should make the code more efficient.
+			var openedUrls = new HashSet<string>();
+
+			try
+			{
+				// Get a list of all processes with the name "chrome"
+				var chromeProcesses = Process.GetProcessesByName("chrome");
+
+				// Check if any processes were found
+				if (chromeProcesses.Length > 0)
+				{
+					// Chrome is running, so we can proceed to retrieve the URLs
+
+					// Iterate through each process
+					foreach (var process in chromeProcesses)
+					{
+						// Get the main window title of the process
+						string windowTitle = process.MainWindowTitle;
+
+						// Check if the window title is not empty
+						if (!string.IsNullOrEmpty(windowTitle))
+						{
+							// The window title will contain the URL at the end, so we can retrieve it by splitting the string
+							string[] parts = windowTitle.Split('-');
+
+							// The URL will be the last part, so we can retrieve it using the Last() method
+							string url = parts.Last().Trim();
+
+							// Add the URL to the hash set
+							openedUrls.Add(url);
+						}
+					}
+				}
+				else
+				{
+					// Chrome is not running, so we can't retrieve the URLs
+					log.Warn("Chrome is not running.");
+				}
+			}
+			catch (Exception ex)
+			{
+				// Log the error message using log4net
+				log.Error("Error retrieving opened URLs in Chrome: " + ex.Message, ex);
+			}
+
+			// Return the hash set of URLs as an array
+			return openedUrls.ToArray();
 		}
 
 		private void ShutDown()
