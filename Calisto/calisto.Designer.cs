@@ -1,6 +1,6 @@
 ﻿namespace calisto
 {
-	partial class Service1
+	partial class calisto
 	{
 		/// <summary> 
 		/// Required designer variable.

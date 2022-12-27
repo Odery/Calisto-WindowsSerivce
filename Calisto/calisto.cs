@@ -18,7 +18,7 @@ using System.Management;
 
 namespace calisto
 {
-    public partial class Service1 : ServiceBase
+    public partial class calisto : ServiceBase
     {
 		// Constant variables
 		int timerInterval = int.Parse(ConfigurationManager.AppSettings["TimerInterval"]);
@@ -27,12 +27,12 @@ namespace calisto
 		private System.Timers.Timer timer;
 
         // Logger instance
-        private static readonly ILog log = LogManager.GetLogger(typeof(Service1));
+        private static readonly ILog log = LogManager.GetLogger(typeof(calisto));
 
         // Cache for the system status data
         private SystemStatus systemStatusCache;
 
-        public Service1()
+        public calisto()
         {
             InitializeComponent();
         }
