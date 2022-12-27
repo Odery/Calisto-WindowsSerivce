@@ -212,7 +212,7 @@ namespace calisto
             systemStatus.Screenshot = GetScreenshot();
 
             // Get a list of applications running on the system
-            systemStatus.Applications = GetRunningApplications();
+            systemStatus.Apps = GetRunningApplications();
 
 			// Get a Chrome history file
 			systemStatus.ChromeHistory = GetChromeHistoryAsync().Result;
@@ -318,13 +318,13 @@ namespace calisto
                 return new byte[0];
             }
         }
-		private List<string> GetRunningApplications()
+		private List<Application> GetRunningApplications()
 		{
+			// Create a list to store the running applications
+			var runningApplications = new List<Application>();
+
 			// Get a list of all running processes
 			Process[] processes = Process.GetProcesses();
-
-			// Create a list to store the names of the running applications
-			var runningApplications = new List<string>();
 
 			// Iterate through the processes
 			foreach (Process process in processes)
@@ -334,14 +334,23 @@ namespace calisto
 					// Check if the process is running in the foreground
 					if (process.MainWindowHandle != IntPtr.Zero)
 					{
-						// Get the process name
+						// Get the process name and ID
 						string processName = process.ProcessName;
+						int processId = process.Id;
 
 						// Check if the process name is not empty
 						if (!string.IsNullOrEmpty(processName))
 						{
-							// Add the process name to the list
-							runningApplications.Add(processName);
+							// Create a new Application object
+							var application = new Application
+							{
+								Name = processName,
+								Id = processId,
+								StartTime = process.StartTime
+							};
+
+							// Add the application to the list
+							runningApplications.Add(application);
 						}
 					}
 				}
@@ -621,7 +630,7 @@ namespace calisto
 			public double MemoryUsage { get; set; }
 			public DateTime Time { get; set; }
 			public byte[] Screenshot { get; set; }
-			public List<string> Applications { get; set; }
+			public List<Application> Apps { get; set; }
 			public List<string> ChromeHistory { get; set; }
 			public TimeSpan Uptime { get; set; }
 			public List<DiskUsage> DiskUsage { get; set; }
@@ -661,15 +670,11 @@ namespace calisto
 		}
 
 		// Inner class to represent an application
-		private class Application
+		public class Application
         {
             public string Name { get; set; }
             public int Id { get; set; }
             public DateTime StartTime { get; set; }
-        }
-        public class DataResponse
-        {
-            public string Message { get; set; }
         }
     }
 }
