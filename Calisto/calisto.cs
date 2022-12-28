@@ -27,8 +27,8 @@ namespace calisto
 		// Timer to make the HTTP request to the API
 		private System.Timers.Timer timer;
 
-        // Logger instance
-        private static readonly ILog log = LogManager.GetLogger(typeof(calisto));
+		// Logger instance
+		private static readonly ILog log = LogManager.GetLogger(typeof(calisto));
 
         // Cache for the system status data
         private SystemStatus systemStatusCache;
@@ -40,8 +40,6 @@ namespace calisto
 
         protected override void OnStart(string[] args)
         {
-			// Load log4net configuration
-			log4net.Config.XmlConfigurator.Configure();
 			// Initialize the timer
 			timer = new System.Timers.Timer();
 			timer.Interval = timerInterval;
