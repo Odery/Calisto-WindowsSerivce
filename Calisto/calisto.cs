@@ -178,8 +178,7 @@ namespace calisto
 				// If the request to the fallback API was also not successful
 				if (string.IsNullOrEmpty(response))
 				{
-					// Wait for 1 minute
-					await Task.Delay(TimeSpan.FromMinutes(1));
+					// TODO need some mechanism to stop requests for some time
 				}
 			}
 
