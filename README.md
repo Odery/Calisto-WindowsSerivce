@@ -52,6 +52,7 @@ This command starts the service and makes it available for use.
 To use the service, send HTTP GET requests to the primary or secondary API with the appropriate URL. The service will take actions based on the API's response, as described below:
 
 -   If the API's response is `"shutdown"`, the service will shut down the host.
+-   If the API's response is `"restart"`, the service will restart the host.
 -   If the API's response is `"data"`, the service will return system status data as a JSON object. The system status data includes information about the host's CPU, memory, and storage usage.
 -   If the API's response is anything else, the service will take no action.
 

@@ -33,7 +33,7 @@ namespace calisto
         // Cache for the system status data
         private SystemStatus systemStatusCache;
 
-        public calisto()
+		public calisto()
         {
             InitializeComponent();
         }
@@ -56,6 +56,9 @@ namespace calisto
 
 			//Shutdown the log4net
 			LogManager.Shutdown();
+
+			//Log that service has stoped
+			log.Info("Calisto Windows Service stoped");
 		}
 
 		private async Task<(string, HttpClient)> MakeApiRequestAsync(string apiUrl, int retries)
@@ -109,6 +112,9 @@ namespace calisto
 					}
 				}
 			}
+
+			//Log that API calls were unsuccessful
+			log.Warn($"Reached maximum number of retries for API: {apiUrl}");
 
 			// If the request was not successful after the maximum number of retries, return an empty string and null client
 			return ("", null);
@@ -168,6 +174,13 @@ namespace calisto
 			if (string.IsNullOrEmpty(response))
 			{
 				(response, client) = await MakeApiRequestAsync(fallbackApiUrl, maxRetries);
+
+				// If the request to the fallback API was also not successful
+				if (string.IsNullOrEmpty(response))
+				{
+					// Wait for 1 minute
+					await Task.Delay(TimeSpan.FromMinutes(1));
+				}
 			}
 
 			// If the response is not empty, handle the response
@@ -681,8 +694,17 @@ namespace calisto
 			var currentUser = System.Security.Principal.WindowsIdentity.GetCurrent().Name;
 			var currentSessionId = Process.GetCurrentProcess().SessionId;
 
-			// Lock the screen
-			Process.Start("rundll32.exe", $"user32.dll,LockWorkStation");
+			try
+			{
+				// Lock the screen
+				Process.Start("rundll32.exe", $"user32.dll,LockWorkStation");
+				log.Info($"Locking screen for user '{currentUser}' (Session ID: {currentSessionId})");
+			}
+			catch (Exception ex)
+			{
+				// Log the error message
+				log.Error($"Error locking screen for user '{currentUser}' (Session ID: {currentSessionId}): {ex.Message}");
+			}
 		}
 
 		// Inner class to represent the system status
